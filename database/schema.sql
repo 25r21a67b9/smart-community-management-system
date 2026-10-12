@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS residents (
     phone VARCHAR(20) NOT NULL,
     email VARCHAR(120) NOT NULL UNIQUE,
     resident_type ENUM('Owner', 'Tenant') NOT NULL,
+    member_role ENUM('Primary Resident', 'Family Member') NOT NULL DEFAULT 'Primary Resident',
     family_members INT NOT NULL DEFAULT 1,
     registration_date DATE NOT NULL,
     status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',

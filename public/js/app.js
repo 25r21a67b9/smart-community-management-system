@@ -6,8 +6,15 @@
  */
 
 const AppState = {
-  token: localStorage.getItem('sc_auth_token') || null,
-  user: JSON.parse(localStorage.getItem('sc_auth_user') || 'null'),
+  token:
+    localStorage.getItem('sc_auth_token') ||
+    sessionStorage.getItem('sc_auth_token') ||
+    null,
+  user: JSON.parse(
+    localStorage.getItem('sc_auth_user') ||
+      sessionStorage.getItem('sc_auth_user') ||
+      'null'
+  ),
   communityName: localStorage.getItem('sc_community_name') || 'Oakridge Heights Residency',
   isDemoSeeded: true,
   activePage: 'dashboard',
@@ -54,6 +61,14 @@ function formatCurrency(amount) {
   return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatCompactDate(dateObj = new Date()) {
+  const weekday = dateObj.toLocaleDateString('en-GB', { weekday: 'short' });
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const month = dateObj.toLocaleDateString('en-GB', { month: 'short' });
+  const year = dateObj.getFullYear();
+  return `${weekday}, ${day} ${month} ${year}`;
+}
+
 function showToast(message, type = 'success') {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -90,7 +105,7 @@ function openModal(title, bodyHtml, sizeClass = 'modal-lg') {
 
   titleEl.textContent = title;
   bodyEl.innerHTML = bodyHtml;
-  dialogEl.className = `modal-dialog modal-dialog-centered ${sizeClass}`;
+  dialogEl.className = `modal-dialog modal-dialog-centered modal-dialog-scrollable ${sizeClass}`;
 
   if (!activeModalInstance) {
     activeModalInstance = new bootstrap.Modal(modalEl);
@@ -115,23 +130,11 @@ function getConfiguredBackendBaseUrl() {
 
 async function apiRequest(endpoint, options = {}) {
   const configuredBaseUrl = getConfiguredBackendBaseUrl();
-
-  // Do not assume a backend server exists on Vercel static deployments.
-  // Unless an external deployed backend URL is explicitly configured, execute
-  // against the built-in client-side Demonstration Engine.
-  if (!configuredBaseUrl && window.SmartCommunityDemoEngine) {
-    try {
-      return await window.SmartCommunityDemoEngine.handleRequest(endpoint, options, AppState.user);
-    } catch (err) {
-      if (err && err.status === 401 && !endpoint.includes('/api/auth/login')) {
-        handleLogout(false);
-      }
-      throw err;
-    }
-  }
+  const vaultToken = localStorage.getItem('sc_account_vault') || '';
 
   const headers = {
     'Content-Type': 'application/json',
+    ...(vaultToken ? { 'X-SC-Account-Vault': vaultToken } : {}),
     ...(options.headers || {})
   };
   if (AppState.token) {
@@ -146,17 +149,17 @@ async function apiRequest(endpoint, options = {}) {
       headers
     });
   } catch {
-    throw new Error('Unable to reach the configured backend server. Please verify the backend URL.');
+    throw new Error('Unable to reach the community server. Please check your network connection.');
   }
 
-  if (response.status === 401 && !endpoint.includes('/api/auth/login')) {
+  if (response.status === 401 && !endpoint.includes('/api/auth/')) {
     handleLogout(false);
     throw new Error('Your session has expired. Please sign in again.');
   }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || data.message || `Operation failed (${response.status})`);
+    throw new Error(data.error || data.message || `Request failed (${response.status})`);
   }
   return data;
 }
@@ -216,11 +219,15 @@ function getDefaultPageForRole(role) {
 }
 
 // ============================================================================
-// MODULE 1: LOGIN SCREEN (SPLIT-SCREEN LAYOUT)
+// MODULE 1: PROFESSIONAL LOGIN & RESIDENT REGISTRATION
 // ============================================================================
-function renderLoginScreen(errorMsg = '') {
+function renderLoginScreen(errorMsg = '', prefill = {}) {
   destroyActiveCharts();
   const app = document.getElementById('app');
+  const savedIdentifier = prefill.identifier || localStorage.getItem('sc_remembered_identifier') || '';
+  const savedFlat = prefill.flatNumber || localStorage.getItem('sc_remembered_flat') || '';
+  const successBanner = prefill.successMsg || '';
+
   app.innerHTML = `
     <div class="login-wrapper">
       <!-- Left Side: Residential Apartment Image with Dark Blue Overlay -->
@@ -239,7 +246,7 @@ function renderLoginScreen(errorMsg = '') {
             <div class="sc-brand-icon">
               <i class="bi bi-buildings-fill"></i>
             </div>
-            <span class="fs-5 fw-bold brand-font tracking-tight">Smart Community Management</span>
+            <span class="fs-5 fw-bold brand-font tracking-tight">Smart Community Management System</span>
           </div>
         </div>
 
@@ -251,7 +258,7 @@ function renderLoginScreen(errorMsg = '') {
             Modern Apartment Administration & Resident Services
           </h1>
           <p class="mb-4 text-white-50 fs-6" style="line-height: 1.65;">
-            A unified residential management portal for community administrators, flat residents, and dedicated maintenance staff. Track household records, resolve maintenance issues, pay monthly dues, and reserve community facilities seamlessly.
+            A unified residential management platform for community administrators, flat residents, and maintenance staff. Manage household records, track maintenance requests, pay monthly dues, and reserve community amenities seamlessly.
           </p>
           <div class="row g-3 pt-2 border-top border-light border-opacity-10">
             <div class="col-4">
@@ -271,31 +278,43 @@ function renderLoginScreen(errorMsg = '') {
 
         <div class="login-hero-content">
           <div class="small text-white-50">
-            Oakridge Heights Residency · Resident & Association Portal
+            ${escapeHtml(AppState.communityName)} · Resident & Association Portal
           </div>
         </div>
       </div>
 
-      <!-- Right Side: White Login Card -->
+      <!-- Right Side: Professional Sign-In Card -->
       <div class="login-form-pane">
+        <!-- Mobile Brand Header -->
+        <div class="login-mobile-brand">
+          <div class="sc-brand-icon">
+            <i class="bi bi-buildings-fill"></i>
+          </div>
+          <div class="overflow-hidden">
+            <div class="fw-bold brand-font text-truncate" style="font-size: 0.98rem;">Smart Community Management System</div>
+            <div class="text-white-50" style="font-size: 0.74rem;">${escapeHtml(AppState.communityName)}</div>
+          </div>
+        </div>
+
         <div class="login-card">
-          <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div class="d-flex align-items-center gap-3">
-              <div class="sc-brand-icon">
-                <i class="bi bi-shield-lock-fill"></i>
-              </div>
-              <div>
-                <h4 class="fw-bold mb-0" style="color: var(--sc-navy);">Demo Role Sign-In</h4>
-                <div class="text-muted small">Smart Community Management System</div>
-              </div>
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="sc-brand-icon">
+              <i class="bi bi-shield-lock-fill"></i>
             </div>
-            <span class="sc-status sc-status-info">Demo Mode</span>
+            <div>
+              <h4 class="fw-bold mb-0" style="color: var(--sc-navy); font-size: 1.25rem;">Smart Community Management System</h4>
+              <div class="text-muted small">Sign in to your residential community account</div>
+            </div>
           </div>
 
-          <div class="p-2 px-3 rounded border mb-3 small" style="background: #F8FAFC; color: var(--sc-text-muted);">
-            <i class="bi bi-info-circle-fill text-primary me-1"></i>
-            <strong>Interactive Demonstration Mode:</strong> Select one of the community demo role accounts below to access its role-specific dashboard and workflow.
-          </div>
+          ${
+            successBanner
+              ? `<div class="alert alert-success py-2 px-3 small d-flex align-items-center gap-2 mb-3">
+                   <i class="bi bi-check-circle-fill"></i>
+                   <span>${escapeHtml(successBanner)}</span>
+                 </div>`
+              : ''
+          }
 
           ${
             errorMsg
@@ -307,90 +326,105 @@ function renderLoginScreen(errorMsg = '') {
           }
 
           <form id="loginForm" novalidate>
-            <input type="hidden" id="selectedDemoRole" value="ADMIN" />
-
-            <!-- Role Selection for Project Demonstration -->
-            <div class="mb-3">
-              <label class="form-label fw-semibold small text-secondary mb-2">
-                1. Choose Demo Role Account
-              </label>
-              <div class="row g-2">
-                <div class="col-4">
-                  <button
-                    type="button"
-                    class="demo-role-btn w-100 active"
-                    onclick="selectDemoRoleAccount('ADMIN', 'admin@smartcommunity.com', 'Rajeshwar Rao · Chief Administrator', this)"
-                  >
-                    <div class="text-dark fw-bold"><i class="bi bi-person-gear me-1"></i>Admin</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Community Admin</div>
-                  </button>
-                </div>
-                <div class="col-4">
-                  <button
-                    type="button"
-                    class="demo-role-btn w-100"
-                    onclick="selectDemoRoleAccount('RESIDENT', 'resident@smartcommunity.com', 'Arjun Mehta · Block A, Flat A-101', this)"
-                  >
-                    <div class="text-dark fw-bold"><i class="bi bi-house-heart me-1"></i>Resident</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Flat A-101</div>
-                  </button>
-                </div>
-                <div class="col-4">
-                  <button
-                    type="button"
-                    class="demo-role-btn w-100"
-                    onclick="selectDemoRoleAccount('WORKER', 'worker@smartcommunity.com', 'Ramesh Yadav · Plumber (WRK-201)', this)"
-                  >
-                    <div class="text-dark fw-bold"><i class="bi bi-tools me-1"></i>Worker</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Plumber</div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <div class="mb-3">
               <label class="form-label fw-semibold small text-secondary" for="loginIdentifier">
-                2. Selected Demo Account Email / Username
+                Email or Username *
               </label>
               <div class="input-group">
                 <span class="input-group-text bg-light border-end-0 text-secondary">
-                  <i class="bi bi-person-check"></i>
+                  <i class="bi bi-envelope"></i>
                 </span>
                 <input
                   type="text"
                   id="loginIdentifier"
                   class="form-control border-start-0"
-                  placeholder="admin@smartcommunity.com"
-                  value="admin@smartcommunity.com"
+                  placeholder="Enter your email or username"
+                  value="${escapeHtml(savedIdentifier)}"
+                  autocomplete="username"
                   required
                 />
               </div>
-              <div class="form-text small" id="selectedDemoAccountDesc">
-                Active Demo Profile: <strong>Rajeshwar Rao · Chief Administrator</strong>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold small text-secondary" for="loginPassword">
+                Password *
+              </label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-secondary">
+                  <i class="bi bi-lock"></i>
+                </span>
+                <input
+                  type="password"
+                  id="loginPassword"
+                  class="form-control border-start-0 border-end-0"
+                  placeholder="Enter your password"
+                  autocomplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  class="btn btn-light border border-start-0 text-secondary"
+                  onclick="togglePasswordVisibility('loginPassword', this)"
+                  title="Show or hide password"
+                >
+                  <i class="bi bi-eye"></i>
+                </button>
               </div>
             </div>
 
-            <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small text-secondary" for="loginFlatNumber">
+                Flat Number <span class="text-muted fw-normal">(Required for Residents)</span>
+              </label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-secondary">
+                  <i class="bi bi-door-open"></i>
+                </span>
+                <input
+                  type="text"
+                  id="loginFlatNumber"
+                  class="form-control border-start-0 tabular-nums"
+                  placeholder="e.g. A-101, A-102, B-201"
+                  value="${escapeHtml(savedFlat)}"
+                />
+              </div>
+              <div class="form-text small" style="font-size: 0.74rem;">
+                Residents must enter their assigned flat number (e.g., <strong>A-101</strong>). Leave blank for Administrator or Maintenance Staff.
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="rememberMeCheck" checked />
                 <label class="form-check-label small text-secondary" for="rememberMeCheck">
-                  Keep demo session active in this browser
+                  Remember me
                 </label>
               </div>
               <button
                 type="button"
-                class="btn btn-link btn-sm p-0 text-decoration-none small"
-                onclick="resetBrowserDemoData()"
-                title="Reset browser demo records to default seed state"
+                class="btn btn-link btn-sm p-0 text-decoration-none small fw-semibold"
+                onclick="openForgotPasswordModal()"
               >
-                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Demo Data
+                Forgot Password?
               </button>
             </div>
 
             <button type="submit" class="btn btn-sc-primary w-100 py-2" id="loginSubmitBtn">
-              <i class="bi bi-box-arrow-in-right me-1"></i> Sign In to Demo Portal
+              <i class="bi bi-box-arrow-in-right me-1"></i>Sign In
             </button>
           </form>
+
+          <div class="border-top mt-4 pt-3 text-center">
+            <span class="small text-secondary">New resident moving into the community?</span>
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm w-100 mt-2 fw-semibold"
+              onclick="renderResidentRegistrationScreen()"
+            >
+              <i class="bi bi-person-plus me-1"></i>Create Resident Account
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -399,58 +433,391 @@ function renderLoginScreen(errorMsg = '') {
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const identifier = document.getElementById('loginIdentifier').value.trim();
-    const demoRole = document.getElementById('selectedDemoRole').value;
+    const password = document.getElementById('loginPassword').value;
+    const flatNumber = document.getElementById('loginFlatNumber').value.trim();
+    const rememberMe = document.getElementById('rememberMeCheck').checked;
 
-    if (!identifier) {
-      renderLoginScreen('Please select a demo role account or enter a demo account email.');
+    if (!identifier || !password) {
+      renderLoginScreen('Please enter both your email/username and password.', {
+        identifier,
+        flatNumber
+      });
       return;
     }
 
     const submitBtn = document.getElementById('loginSubmitBtn');
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Entering Demo Portal...`;
+    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Signing In...`;
 
     try {
       const result = await apiRequest('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ identifier, demoRole })
+        body: JSON.stringify({ identifier, password, flatNumber })
       });
 
       AppState.token = result.token;
       AppState.user = result.user;
       AppState.communityName = result.communityName || 'Oakridge Heights Residency';
-      localStorage.setItem('sc_auth_token', result.token);
-      localStorage.setItem('sc_auth_user', JSON.stringify(result.user));
+
+      sessionStorage.setItem('sc_auth_token', result.token);
+      sessionStorage.setItem('sc_auth_user', JSON.stringify(result.user));
       localStorage.setItem('sc_community_name', AppState.communityName);
 
-      // Redirect each user to their role-specific dashboard
+      if (rememberMe) {
+        localStorage.setItem('sc_auth_token', result.token);
+        localStorage.setItem('sc_auth_user', JSON.stringify(result.user));
+        localStorage.setItem('sc_remembered_identifier', identifier);
+        if (result.user.flatNumber) {
+          localStorage.setItem('sc_remembered_flat', result.user.flatNumber);
+        }
+      } else {
+        localStorage.removeItem('sc_auth_token');
+        localStorage.removeItem('sc_auth_user');
+        localStorage.removeItem('sc_remembered_identifier');
+        localStorage.removeItem('sc_remembered_flat');
+      }
+
       AppState.activePage = getDefaultPageForRole(result.user.role);
-      showToast(`Signed in as ${result.user.fullName} (${result.user.role})`, 'success');
+      showToast(`Welcome back, ${result.user.fullName}!`, 'success');
       renderAppShell();
     } catch (err) {
-      renderLoginScreen(err.message);
+      renderLoginScreen(err.message, { identifier, flatNumber });
     }
   });
 }
 
-window.selectDemoRoleAccount = function (role, email, description, btnEl) {
-  const roleInput = document.getElementById('selectedDemoRole');
-  const idInput = document.getElementById('loginIdentifier');
-  const descEl = document.getElementById('selectedDemoAccountDesc');
-  if (roleInput) roleInput.value = role;
-  if (idInput) idInput.value = email;
-  if (descEl) {
-    descEl.innerHTML = `Active Demo Profile: <strong>${escapeHtml(description)}</strong>`;
+window.togglePasswordVisibility = function (inputId, btnEl) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isPwd = input.type === 'password';
+  input.type = isPwd ? 'text' : 'password';
+  if (btnEl) {
+    btnEl.innerHTML = `<i class="bi ${isPwd ? 'bi-eye-slash' : 'bi-eye'}"></i>`;
   }
-  document.querySelectorAll('.demo-role-btn').forEach((b) => b.classList.remove('active'));
-  if (btnEl) btnEl.classList.add('active');
 };
 
-window.resetBrowserDemoData = function () {
-  if (window.SmartCommunityDemoEngine && typeof window.SmartCommunityDemoEngine.resetDemoDatabase === 'function') {
-    window.SmartCommunityDemoEngine.resetDemoDatabase();
-    showToast('Demonstration dataset restored to initial seed state.', 'info');
-  }
+// RESIDENT SELF-REGISTRATION SCREEN (Strictly creates RESIDENT accounts only)
+window.renderResidentRegistrationScreen = function (errorMsg = '', formValues = {}) {
+  destroyActiveCharts();
+  const app = document.getElementById('app');
+
+  app.innerHTML = `
+    <div class="login-wrapper">
+      <div class="login-hero-pane">
+        <img
+          src="/images/apartment-hero.jpg"
+          alt="Oakridge Heights Residential Community"
+          class="login-hero-img"
+          referrerPolicy="no-referrer"
+          onerror="this.style.display='none'"
+        />
+        <div class="login-hero-scrim"></div>
+
+        <div class="login-hero-content">
+          <div class="d-flex align-items-center gap-3 mb-4">
+            <div class="sc-brand-icon">
+              <i class="bi bi-buildings-fill"></i>
+            </div>
+            <span class="fs-5 fw-bold brand-font tracking-tight">Smart Community Management System</span>
+          </div>
+        </div>
+
+        <div class="login-hero-content my-auto">
+          <p class="text-uppercase small fw-semibold mb-2" style="letter-spacing: 0.08em; color: #93C5FD;">
+            Resident Onboarding
+          </p>
+          <h1 class="display-6 fw-bold mb-3" style="text-wrap: balance;">
+            Register Your Flat & Household Account
+          </h1>
+          <p class="mb-4 text-white-50 fs-6" style="line-height: 1.65;">
+            Create an individual Resident Portal account linked to your block and flat number. Multiple family members within the same flat can register separate accounts and share access to household maintenance bills, complaints, and facility bookings.
+          </p>
+        </div>
+
+        <div class="login-hero-content">
+          <div class="small text-white-50">
+            ${escapeHtml(AppState.communityName)} · Resident Registration
+          </div>
+        </div>
+      </div>
+
+      <div class="login-form-pane">
+        <div class="login-mobile-brand">
+          <div class="sc-brand-icon">
+            <i class="bi bi-buildings-fill"></i>
+          </div>
+          <div class="overflow-hidden">
+            <div class="fw-bold brand-font text-truncate" style="font-size: 0.98rem;">Smart Community Management System</div>
+            <div class="text-white-50" style="font-size: 0.74rem;">Resident Account Registration</div>
+          </div>
+        </div>
+
+        <div class="login-card login-card-wide">
+          <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="sc-brand-icon">
+                <i class="bi bi-house-heart-fill"></i>
+              </div>
+              <div>
+                <h4 class="fw-bold mb-0" style="color: var(--sc-navy); font-size: 1.2rem;">Create Resident Account</h4>
+                <div class="text-muted small">Register your flat and household details</div>
+              </div>
+            </div>
+            <span class="sc-status sc-status-info">Resident Role</span>
+          </div>
+
+          ${
+            errorMsg
+              ? `<div class="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3">
+                   <i class="bi bi-exclamation-octagon-fill"></i>
+                   <span>${escapeHtml(errorMsg)}</span>
+                 </div>`
+              : ''
+          }
+
+          <form id="residentRegisterForm" novalidate>
+            <div class="row g-3">
+              <div class="col-12 col-sm-6">
+                <label class="form-label small fw-semibold text-secondary">Full Name *</label>
+                <input
+                  type="text"
+                  id="regFullName"
+                  class="form-control"
+                  placeholder="e.g. Kiran Kumar"
+                  value="${escapeHtml(formValues.fullName || '')}"
+                  required
+                />
+              </div>
+
+              <div class="col-12 col-sm-6">
+                <label class="form-label small fw-semibold text-secondary">Email Address *</label>
+                <input
+                  type="email"
+                  id="regEmail"
+                  class="form-control"
+                  placeholder="name@example.com"
+                  value="${escapeHtml(formValues.email || '')}"
+                  required
+                />
+              </div>
+
+              <div class="col-12 col-sm-6">
+                <label class="form-label small fw-semibold text-secondary">Phone Number *</label>
+                <input
+                  type="text"
+                  id="regPhone"
+                  class="form-control tabular-nums"
+                  placeholder="e.g. 9848012345"
+                  value="${escapeHtml(formValues.phone || '')}"
+                  required
+                />
+              </div>
+
+              <div class="col-6 col-sm-3">
+                <label class="form-label small fw-semibold text-secondary">Block *</label>
+                <select id="regBlock" class="form-select" required>
+                  ${['A', 'B', 'C', 'D']
+                    .map(
+                      (b) =>
+                        `<option value="${b}" ${formValues.block === b ? 'selected' : ''}>Block ${b}</option>`
+                    )
+                    .join('')}
+                </select>
+              </div>
+
+              <div class="col-6 col-sm-3">
+                <label class="form-label small fw-semibold text-secondary">Flat Number *</label>
+                <input
+                  type="text"
+                  id="regFlatNumber"
+                  class="form-control tabular-nums"
+                  placeholder="e.g. A-101"
+                  value="${escapeHtml(formValues.flatNumber || '')}"
+                  required
+                />
+              </div>
+
+              <div class="col-12 col-sm-4">
+                <label class="form-label small fw-semibold text-secondary">Occupancy Type *</label>
+                <select id="regResidentType" class="form-select">
+                  <option value="Owner" ${formValues.residentType === 'Owner' ? 'selected' : ''}>Owner</option>
+                  <option value="Tenant" ${formValues.residentType === 'Tenant' ? 'selected' : ''}>Tenant</option>
+                </select>
+              </div>
+
+              <div class="col-6 col-sm-4">
+                <label class="form-label small fw-semibold text-secondary">Household Role</label>
+                <select id="regMemberRole" class="form-select">
+                  <option value="Primary Resident" ${formValues.memberRole === 'Primary Resident' ? 'selected' : ''}>Primary Resident</option>
+                  <option value="Family Member" ${formValues.memberRole === 'Family Member' ? 'selected' : ''}>Family Member</option>
+                </select>
+              </div>
+
+              <div class="col-6 col-sm-4">
+                <label class="form-label small fw-semibold text-secondary">Total Members</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  id="regFamilyMembers"
+                  class="form-control tabular-nums"
+                  value="${escapeHtml(formValues.familyMembers || '3')}"
+                  required
+                />
+              </div>
+
+              <div class="col-12 col-sm-6">
+                <label class="form-label small fw-semibold text-secondary">Password (min 6 chars) *</label>
+                <input
+                  type="password"
+                  id="regPassword"
+                  class="form-control"
+                  placeholder="Create password"
+                  required
+                />
+              </div>
+
+              <div class="col-12 col-sm-6">
+                <label class="form-label small fw-semibold text-secondary">Confirm Password *</label>
+                <input
+                  type="password"
+                  id="regConfirmPassword"
+                  class="form-control"
+                  placeholder="Confirm password"
+                  required
+                />
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-sc-primary w-100 py-2 mt-4" id="regSubmitBtn">
+              <i class="bi bi-check2-circle me-1"></i>Complete Resident Registration
+            </button>
+          </form>
+
+          <div class="border-top mt-3 pt-3 text-center">
+            <button
+              type="button"
+              class="btn btn-link btn-sm text-decoration-none fw-semibold"
+              onclick="renderLoginScreen()"
+            >
+              <i class="bi bi-arrow-left me-1"></i>Back to Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('residentRegisterForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      fullName: document.getElementById('regFullName').value.trim(),
+      email: document.getElementById('regEmail').value.trim(),
+      phone: document.getElementById('regPhone').value.trim(),
+      block: document.getElementById('regBlock').value,
+      flatNumber: document.getElementById('regFlatNumber').value.trim(),
+      residentType: document.getElementById('regResidentType').value,
+      memberRole: document.getElementById('regMemberRole').value,
+      familyMembers: Number(document.getElementById('regFamilyMembers').value) || 3,
+      password: document.getElementById('regPassword').value
+    };
+    const confirmPassword = document.getElementById('regConfirmPassword').value;
+
+    if (payload.password !== confirmPassword) {
+      renderResidentRegistrationScreen('Passwords do not match. Please verify both password fields.', payload);
+      return;
+    }
+
+    const btn = document.getElementById('regSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Registering Account...`;
+
+    try {
+      const res = await apiRequest('/api/auth/register-resident', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (res.vaultToken) {
+        localStorage.setItem('sc_account_vault', res.vaultToken);
+      }
+      renderLoginScreen('', {
+        identifier: res.email,
+        flatNumber: res.flatNumber,
+        successMsg: res.message
+      });
+    } catch (err) {
+      renderResidentRegistrationScreen(err.message, payload);
+    }
+  });
+};
+
+// FORGOT PASSWORD / ACCOUNT RECOVERY MODAL
+window.openForgotPasswordModal = function () {
+  openModal(
+    'Reset Account Password',
+    `
+    <form id="forgotPasswordForm">
+      <p class="small text-secondary mb-3">
+        Verify your registered account details below to set a new password. Residents must also provide their assigned flat number.
+      </p>
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Registered Email or Username *</label>
+          <input type="text" class="form-control" id="fpIdentifier" placeholder="Enter your email or username" required />
+        </div>
+        <div class="col-12 col-sm-6">
+          <label class="form-label small fw-semibold">Registered Phone Number *</label>
+          <input type="text" class="form-control tabular-nums" id="fpPhone" placeholder="e.g. 9848011223" required />
+        </div>
+        <div class="col-12 col-sm-6">
+          <label class="form-label small fw-semibold">Flat Number (For Residents)</label>
+          <input type="text" class="form-control tabular-nums" id="fpFlatNumber" placeholder="e.g. A-101" />
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">New Password (minimum 6 characters) *</label>
+          <input type="password" class="form-control" id="fpNewPassword" placeholder="Enter new password" required />
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+        <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sc-primary" id="fpSubmitBtn">Reset Password</button>
+      </div>
+    </form>
+  `,
+    'modal-md'
+  );
+
+  document.getElementById('forgotPasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('fpSubmitBtn');
+    btn.disabled = true;
+    try {
+      const identifier = document.getElementById('fpIdentifier').value.trim();
+      const flatNumber = document.getElementById('fpFlatNumber').value.trim();
+      const res = await apiRequest('/api/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          identifier,
+          phone: document.getElementById('fpPhone').value.trim(),
+          flatNumber,
+          newPassword: document.getElementById('fpNewPassword').value
+        })
+      });
+      if (res.vaultToken) {
+        localStorage.setItem('sc_account_vault', res.vaultToken);
+      }
+      closeModal();
+      showToast(res.message, 'success');
+      renderLoginScreen('', {
+        identifier,
+        flatNumber,
+        successMsg: res.message
+      });
+    } catch (err) {
+      btn.disabled = false;
+      showToast(err.message, 'danger');
+    }
+  });
 };
 
 async function handleLogout(notify = true) {
@@ -467,14 +834,16 @@ async function handleLogout(notify = true) {
   AppState.user = null;
   localStorage.removeItem('sc_auth_token');
   localStorage.removeItem('sc_auth_user');
+  sessionStorage.removeItem('sc_auth_token');
+  sessionStorage.removeItem('sc_auth_user');
   if (notify) {
-    showToast('You have been logged out.', 'info');
+    showToast('You have signed out successfully.', 'info');
   }
   renderLoginScreen();
 }
 
 // ============================================================================
-// ROLE-SPECIFIC SIDEBAR NAVIGATION & APP SHELL
+// ROLE-SPECIFIC SIDEBAR NAVIGATION & RESPONSIVE APP SHELL
 // ============================================================================
 function getNavigationItemsForRole(role) {
   if (role === 'ADMIN') {
@@ -512,6 +881,20 @@ function getNavigationItemsForRole(role) {
   ];
 }
 
+window.toggleMobileSidebar = function () {
+  const sidebar = document.getElementById('scSidebar');
+  const backdrop = document.getElementById('scSidebarBackdrop');
+  if (sidebar) sidebar.classList.toggle('show-mobile');
+  if (backdrop) backdrop.classList.toggle('show-mobile');
+};
+
+window.closeMobileSidebar = function () {
+  const sidebar = document.getElementById('scSidebar');
+  const backdrop = document.getElementById('scSidebarBackdrop');
+  if (sidebar) sidebar.classList.remove('show-mobile');
+  if (backdrop) backdrop.classList.remove('show-mobile');
+};
+
 async function refreshNotificationsBadge() {
   try {
     const data = await apiRequest('/api/notifications');
@@ -538,7 +921,7 @@ window.openNotificationsModal = async function () {
   openModal(
     'Notifications',
     `
-    <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
       <div class="small text-secondary">
         Showing alerts and updates for <strong>${escapeHtml(AppState.user.fullName)}</strong>
       </div>
@@ -561,9 +944,9 @@ window.openNotificationsModal = async function () {
              ${list
                .map(
                  (n) => `
-               <div class="p-3 rounded border ${n.isRead ? 'bg-white' : 'bg-light border-primary border-opacity-25'} d-flex justify-content-between align-items-start gap-3">
-                 <div>
-                   <div class="d-flex align-items-center gap-2 mb-1">
+               <div class="p-3 rounded border ${n.isRead ? 'bg-white' : 'bg-light border-primary border-opacity-25'} d-flex justify-content-between align-items-start gap-2">
+                 <div class="min-w-0">
+                   <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
                      <span class="sc-status sc-status-info">${escapeHtml(n.category)}</span>
                      <span class="fw-bold text-dark small">${escapeHtml(n.title)}</span>
                      ${!n.isRead ? `<span class="sc-status sc-status-warning">New</span>` : ''}
@@ -575,7 +958,7 @@ window.openNotificationsModal = async function () {
                  </div>
                  ${
                    !n.isRead
-                     ? `<button class="btn btn-sm btn-light border shrink-0" onclick="markNotificationRead(${n.id})" title="Mark as read">
+                     ? `<button class="btn btn-sm btn-light border flex-shrink-0" onclick="markNotificationRead(${n.id})" title="Mark as read">
                           <i class="bi bi-check2"></i>
                         </button>`
                      : ''
@@ -617,35 +1000,43 @@ function renderAppShell() {
     role === 'ADMIN'
       ? 'Administrator'
       : role === 'RESIDENT'
-      ? 'Resident Portal'
+      ? `Resident${AppState.user.flatNumber ? ` · Flat ${AppState.user.flatNumber}` : ''}`
       : 'Maintenance Worker';
 
-  const todayFormatted = new Date().toLocaleDateString('en-IN', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
+  const todayFormatted = formatCompactDate(new Date());
 
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="app-shell">
+      <!-- Mobile Sidebar Backdrop -->
+      <div class="sc-sidebar-backdrop" id="scSidebarBackdrop" onclick="closeMobileSidebar()"></div>
+
       <!-- Fixed Dark Navy Sidebar -->
       <aside class="sc-sidebar" id="scSidebar">
         <div class="sc-sidebar-brand">
-          <div class="sc-brand-icon">
-            <i class="bi bi-buildings-fill"></i>
-          </div>
-          <div class="overflow-hidden">
-            <div class="fw-bold text-white text-truncate brand-font" style="font-size: 0.95rem;" id="sidebarCommunityName">
-              ${escapeHtml(AppState.communityName)}
+          <div class="d-flex align-items-center gap-2 overflow-hidden">
+            <div class="sc-brand-icon">
+              <i class="bi bi-buildings-fill"></i>
             </div>
-            <div class="text-white-50" style="font-size: 0.72rem;">${escapeHtml(roleDisplayLabel)}</div>
+            <div class="overflow-hidden">
+              <div class="fw-bold text-white text-truncate brand-font" style="font-size: 0.93rem;" id="sidebarCommunityName">
+                ${escapeHtml(AppState.communityName)}
+              </div>
+              <div class="text-white-50 text-truncate" style="font-size: 0.72rem;">${escapeHtml(roleDisplayLabel)}</div>
+            </div>
           </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-light border-opacity-25 d-lg-none flex-shrink-0"
+            onclick="closeMobileSidebar()"
+            aria-label="Close navigation menu"
+          >
+            <i class="bi bi-x-lg"></i>
+          </button>
         </div>
 
         <nav class="sc-sidebar-nav">
-          <div class="sc-nav-section-label">${escapeHtml(roleDisplayLabel)} Menu</div>
+          <div class="sc-nav-section-label">Navigation Menu</div>
           ${navItems
             .map(
               (item) => `
@@ -666,13 +1057,13 @@ function renderAppShell() {
           <div class="d-flex align-items-center justify-content-between">
             <div class="overflow-hidden me-2">
               <div class="fw-semibold text-white small text-truncate">${escapeHtml(AppState.user.fullName)}</div>
-              <div class="text-white-50" style="font-size: 0.72rem;">${escapeHtml(roleDisplayLabel)}</div>
+              <div class="text-white-50 text-truncate" style="font-size: 0.72rem;">${escapeHtml(roleDisplayLabel)}</div>
             </div>
             <button
               type="button"
-              class="btn btn-sm btn-outline-light border-opacity-25"
+              class="btn btn-sm btn-outline-light border-opacity-25 flex-shrink-0"
               onclick="handleLogout(true)"
-              title="Logout"
+              title="Sign Out"
             >
               <i class="bi bi-box-arrow-right"></i>
             </button>
@@ -682,61 +1073,70 @@ function renderAppShell() {
 
       <!-- Main Workspace -->
       <div class="sc-main">
-        <!-- Clean White Top Navigation Bar -->
+        <!-- Responsive Top Navigation Bar -->
         <header class="sc-topbar">
-          <div class="d-flex align-items-center gap-3">
+          <div class="sc-topbar-left">
             <button
               type="button"
-              class="btn btn-sm btn-light d-lg-none border"
-              onclick="document.getElementById('scSidebar').classList.toggle('show-mobile')"
+              class="btn btn-light border sc-topbar-icon-btn d-lg-none"
+              onclick="toggleMobileSidebar()"
+              aria-label="Open navigation menu"
             >
               <i class="bi bi-list fs-5"></i>
             </button>
-            <div>
-              <span class="fw-bold text-dark">Welcome, ${escapeHtml(AppState.user.fullName)}</span>
-              <span class="text-muted mx-2">·</span>
-              <span class="text-secondary small tabular-nums"><i class="bi bi-calendar3 me-1"></i>${escapeHtml(todayFormatted)}</span>
+            <div class="sc-topbar-greeting">
+              <div class="sc-topbar-user" title="${escapeHtml(AppState.user.fullName)}">
+                <span class="d-none d-sm-inline">Welcome, </span>${escapeHtml(AppState.user.fullName)}
+              </div>
+              <span class="sc-topbar-sep">·</span>
+              <div class="sc-topbar-date tabular-nums">
+                <i class="bi bi-calendar3 me-1 d-none d-sm-inline"></i>${escapeHtml(todayFormatted)}
+              </div>
             </div>
           </div>
 
-          <div class="d-flex align-items-center gap-2">
+          <div class="sc-topbar-right">
             <!-- Notification Bell Button -->
             <button
               type="button"
-              class="btn btn-sm btn-light border text-secondary position-relative"
+              class="btn btn-light border text-secondary position-relative sc-topbar-icon-btn"
               onclick="openNotificationsModal()"
               title="Notifications"
             >
               <i class="bi bi-bell-fill"></i>
-              <span class="d-none d-md-inline ms-1">Notifications</span>
+              <span class="d-none d-xl-inline ms-1 small fw-medium">Notifications</span>
               <span
                 id="topNotifBadge"
                 class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger tabular-nums d-none"
-                style="font-size: 0.68rem;"
+                style="font-size: 0.65rem;"
               >
                 0
               </span>
             </button>
 
-            <!-- Profile Menu Button -->
+            <!-- Profile / Settings Button -->
             <button
               type="button"
-              class="btn btn-sm btn-light border text-secondary"
+              class="btn btn-light border text-secondary sc-topbar-icon-btn"
               onclick="navigateToPage('${role === 'ADMIN' ? 'settings' : 'my-profile'}')"
-              title="Account Profile & Settings"
+              title="${role === 'ADMIN' ? 'Settings' : 'My Profile'}"
             >
-              <i class="bi bi-person-circle me-1"></i>
-              <span class="d-none d-sm-inline">${role === 'ADMIN' ? 'Settings' : 'My Profile'}</span>
+              <i class="bi bi-person-circle"></i>
+              <span class="d-none d-md-inline ms-1 small fw-medium">${role === 'ADMIN' ? 'Settings' : 'My Profile'}</span>
             </button>
 
             <!-- Primary Role Action -->
             ${
               role === 'WORKER'
-                ? `<button type="button" class="btn btn-sm btn-sc-primary" onclick="navigateToPage('worker-complaints')">
-                     <i class="bi bi-tools me-1"></i>My Assigned Tasks
+                ? `<button type="button" class="btn btn-sc-primary sc-topbar-cta" onclick="navigateToPage('worker-complaints')">
+                     <i class="bi bi-tools"></i>
+                     <span class="d-none d-sm-inline">My Assigned Tasks</span>
+                     <span class="d-inline d-sm-none cta-text-mobile">Tasks</span>
                    </button>`
-                : `<button type="button" class="btn btn-sm btn-sc-primary" onclick="openRegisterComplaintModal()">
-                     <i class="bi bi-plus-lg me-1"></i>Register Complaint
+                : `<button type="button" class="btn btn-sc-primary sc-topbar-cta" onclick="openRegisterComplaintModal()">
+                     <i class="bi bi-plus-lg"></i>
+                     <span class="d-none d-sm-inline">Register Complaint</span>
+                     <span class="d-inline d-sm-none cta-text-mobile">Complaint</span>
                    </button>`
             }
           </div>
@@ -758,6 +1158,7 @@ function renderAppShell() {
 }
 
 window.navigateToPage = function (pageId) {
+  closeMobileSidebar();
   AppState.activePage = pageId;
   renderAppShell();
 };
@@ -869,7 +1270,7 @@ async function renderAdminDashboardPage() {
 
   main.innerHTML = `
     <!-- Top Page Header & Quick Actions -->
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div class="sc-page-header">
       <div>
         <h3 class="fw-bold mb-1" style="color: var(--sc-navy);">Administrator Dashboard</h3>
         <div class="text-secondary small">
@@ -877,7 +1278,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="d-flex flex-wrap gap-2">
+      <div class="sc-page-actions">
         <button class="btn btn-sc-navy btn-sm" onclick="openResidentModal()">
           <i class="bi bi-person-plus-fill me-1"></i>Add Resident
         </button>
@@ -893,10 +1294,9 @@ async function renderAdminDashboardPage() {
       </div>
     </div>
 
-    <!-- 12 Summary Statistic Cards (3 Rows of 4 Cards) -->
+    <!-- 12 Summary Statistic Cards (Responsive 1-col / 2-col on mobile, 3-col tablet, 4-col desktop) -->
     <div class="row g-3 mb-4">
-      <!-- Row 1: Flats, Occupancy & Complaints -->
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Total Flats</div>
@@ -907,7 +1307,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Occupied Flats</div>
@@ -918,7 +1318,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Total Registered Residents</div>
@@ -929,7 +1329,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Total Complaints</div>
@@ -940,8 +1340,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <!-- Row 2: Complaint Status Breakdown & Maintenance Totals -->
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Pending Complaints</div>
@@ -952,7 +1351,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">In-Progress Complaints</div>
@@ -963,7 +1362,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Resolved Complaints</div>
@@ -974,30 +1373,29 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Total Maintenance Due</div>
-            <div class="stat-value tabular-nums" style="color: #B45309; font-size: 1.45rem;">${formatCurrency(stats.totalMaintenanceDue)}</div>
-            <div class="text-muted small mt-1">Outstanding for ${escapeHtml(data.selectedBillingMonth)}</div>
+            <div class="stat-value tabular-nums" style="color: #B45309; font-size: 1.4rem;">${formatCurrency(stats.totalMaintenanceDue)}</div>
+            <div class="text-muted small mt-1">Outstanding (${escapeHtml(data.selectedBillingMonth)})</div>
           </div>
           <div class="sc-stat-icon" style="background: #FEF3C7; color: #B45309;"><i class="bi bi-wallet2"></i></div>
         </div>
       </div>
 
-      <!-- Row 3: Financial & Flat Payment Counts -->
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Total Amount Collected</div>
-            <div class="stat-value tabular-nums" style="color: #15803D; font-size: 1.45rem;">${formatCurrency(stats.totalAmountCollected)}</div>
+            <div class="stat-value tabular-nums" style="color: #15803D; font-size: 1.4rem;">${formatCurrency(stats.totalAmountCollected)}</div>
             <div class="text-muted small mt-1">Verified payments (${escapeHtml(data.selectedBillingMonth)})</div>
           </div>
           <div class="sc-stat-icon" style="background: #DCFCE7; color: #15803D;"><i class="bi bi-cash-stack"></i></div>
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Flats That Have Paid</div>
@@ -1008,7 +1406,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Flats With Pending Payments</div>
@@ -1019,7 +1417,7 @@ async function renderAdminDashboardPage() {
         </div>
       </div>
 
-      <div class="col-6 col-md-4 col-xl-3">
+      <div class="col-12 col-sm-6 col-md-4 col-xl-3">
         <div class="sc-stat-card">
           <div>
             <div class="text-secondary small fw-semibold mb-1">Overdue Payments</div>
@@ -1042,7 +1440,7 @@ async function renderAdminDashboardPage() {
             Billing summary, flat-wise payment status, and residents with outstanding dues
           </div>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
           <label class="small fw-semibold text-secondary mb-0">Billing Period:</label>
           <select
             class="form-select form-select-sm"
@@ -1437,14 +1835,14 @@ async function renderResidentDashboardPage() {
   const { resident, stats, unpaidBills, recentPayments, myComplaints, upcomingBookings, announcements } = data;
 
   main.innerHTML = `
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div class="sc-page-header">
       <div>
         <h3 class="fw-bold mb-1" style="color: var(--sc-navy);">My Household Dashboard</h3>
         <div class="text-secondary small">
-          <strong>${escapeHtml(resident.fullName)}</strong> · Block ${escapeHtml(resident.block)} · Flat <strong>${escapeHtml(resident.flatNumber)}</strong> (${escapeHtml(resident.residentType)})
+          <strong>${escapeHtml(resident.fullName)}</strong> · Block ${escapeHtml(resident.block)} · Flat <strong>${escapeHtml(resident.flatNumber)}</strong> (${escapeHtml(resident.residentType)}${resident.memberRole ? ` · ${escapeHtml(resident.memberRole)}` : ''})
         </div>
       </div>
-      <div class="d-flex flex-wrap gap-2">
+      <div class="sc-page-actions">
         <button class="btn btn-sc-primary btn-sm" onclick="openRegisterComplaintModal()">
           <i class="bi bi-plus-circle me-1"></i>Submit Complaint
         </button>
@@ -1730,16 +2128,16 @@ async function renderFlatsAndHouseholdsPage() {
   const pendingReqs = AppState.cache.householdRequests.filter((r) => r.status === 'Pending');
 
   main.innerHTML = `
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div class="sc-page-header">
       <div>
         <h3 class="fw-bold mb-1" style="color: var(--sc-navy);">Flats & Households Registry</h3>
-        <div class="text-secondary small">Manage apartment units, occupancy status, and household update requests</div>
+        <div class="text-secondary small">Manage apartment units, occupancy status, registered family accounts, and household update requests</div>
       </div>
-      <div class="d-flex gap-2">
-        <button class="btn btn-outline-secondary bg-white" onclick="openAddFlatModal()">
+      <div class="sc-page-actions">
+        <button class="btn btn-outline-secondary btn-sm bg-white" onclick="openAddFlatModal()">
           <i class="bi bi-building-add me-1"></i>Add Flat Unit
         </button>
-        <button class="btn btn-sc-primary" onclick="openResidentModal()">
+        <button class="btn btn-sc-primary btn-sm" onclick="openResidentModal()">
           <i class="bi bi-person-plus-fill me-1"></i>Assign Resident to Flat
         </button>
       </div>
@@ -1805,25 +2203,39 @@ async function renderFlatsAndHouseholdsPage() {
               <th>Unit Type & Area</th>
               <th>Occupancy Status</th>
               <th>Primary Household Head</th>
+              <th>Registered Accounts</th>
               <th>Ownership</th>
               <th>Household Members</th>
             </tr>
           </thead>
           <tbody>
             ${AppState.cache.flats
-              .map(
-                (f) => `
+              .map((f) => {
+                const members = f.householdMembers || (f.resident ? [f.resident] : []);
+                return `
               <tr>
                 <td class="tabular-nums fw-bold">${escapeHtml(f.flatNumber)}</td>
                 <td>Block ${escapeHtml(f.block)} · Floor ${f.floorNumber}</td>
                 <td class="tabular-nums">${escapeHtml(f.bhkType)} (${f.areaSqft} sq.ft)</td>
                 <td>${renderStatusBadge(f.occupancyStatus)}</td>
                 <td class="fw-semibold">${f.resident ? escapeHtml(f.resident.fullName) : '<span class="text-muted">Vacant</span>'}</td>
+                <td>
+                  ${
+                    members.length === 0
+                      ? '<span class="text-muted small">—</span>'
+                      : members
+                          .map(
+                            (m) =>
+                              `<div class="small"><span class="fw-medium">${escapeHtml(m.fullName)}</span> <span class="text-muted">(${escapeHtml(m.memberRole || 'Primary Resident')})</span></div>`
+                          )
+                          .join('')
+                  }
+                </td>
                 <td>${f.resident ? escapeHtml(f.resident.residentType) : '—'}</td>
                 <td class="tabular-nums">${f.resident ? f.resident.familyMembers : '—'}</td>
               </tr>
-            `
-              )
+            `;
+              })
               .join('')}
           </tbody>
         </table>
@@ -1917,19 +2329,19 @@ window.handleHouseholdRequest = async function (reqId, action) {
 async function renderMyHouseholdPage() {
   const main = document.getElementById('scMainContent');
   const data = await apiRequest('/api/my-household');
-  const { resident, flat, requests } = data;
+  const { resident, flat, householdMembers = [], requests } = data;
 
   main.innerHTML = `
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div class="sc-page-header">
       <div>
         <h3 class="fw-bold mb-1" style="color: var(--sc-navy);">My Household Information</h3>
         <div class="text-secondary small">
-          Official flat occupancy record and permitted household contact details for Flat ${escapeHtml(resident.flatNumber)}
+          Official flat occupancy record, registered family member accounts, and permitted contact details for Flat ${escapeHtml(resident.flatNumber)}
         </div>
       </div>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-4 mb-4">
       <!-- Official Flat & Occupancy Details (Read-Only, Managed by Administrator) -->
       <div class="col-12 col-xl-5">
         <div class="sc-card h-100">
@@ -2028,6 +2440,48 @@ async function renderMyHouseholdPage() {
         </div>
       </div>
     </div>
+
+    <!-- Registered Accounts Linked to This Flat -->
+    <div class="sc-card">
+      <div class="sc-card-header">
+        <div>
+          <h6 class="fw-bold mb-0">Registered Resident Accounts for Flat ${escapeHtml(resident.flatNumber)} (${householdMembers.length})</h6>
+          <div class="text-muted small">All family members registered under Flat ${escapeHtml(resident.flatNumber)} share access to flat maintenance bills, complaints, and bookings</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table sc-table mb-0">
+          <thead>
+            <tr>
+              <th>Resident ID</th>
+              <th>Full Name</th>
+              <th>Household Role</th>
+              <th>Phone Number</th>
+              <th>Email Address</th>
+              <th>Ownership</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(householdMembers.length ? householdMembers : [resident])
+              .map(
+                (m) => `
+              <tr>
+                <td class="tabular-nums fw-semibold">${escapeHtml(m.residentCode)}</td>
+                <td class="fw-semibold text-dark">${escapeHtml(m.fullName)}</td>
+                <td><span class="sc-status sc-status-info">${escapeHtml(m.memberRole || 'Primary Resident')}</span></td>
+                <td class="tabular-nums">${escapeHtml(m.phone)}</td>
+                <td>${escapeHtml(m.email)}</td>
+                <td>${escapeHtml(m.residentType)}</td>
+                <td>${renderStatusBadge(m.status)}</td>
+              </tr>
+            `
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
   `;
 
   document.getElementById('myHouseholdForm').addEventListener('submit', async (e) => {
@@ -2061,14 +2515,14 @@ async function renderWorkerDashboardPage() {
   const { worker, stats, assignedComplaints } = data;
 
   main.innerHTML = `
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div class="sc-page-header">
       <div>
         <h3 class="fw-bold mb-1" style="color: var(--sc-navy);">Maintenance Worker Dashboard</h3>
         <div class="text-secondary small">
           <strong>${escapeHtml(worker.name)}</strong> (${escapeHtml(worker.workerCode)}) · Specialization: <strong>${escapeHtml(worker.specialization)}</strong> · Status: ${renderStatusBadge(worker.availability)}
         </div>
       </div>
-      <div class="d-flex gap-2">
+      <div class="sc-page-actions">
         <button class="btn btn-sc-primary btn-sm" onclick="navigateToPage('worker-complaints')">
           <i class="bi bi-tools me-1"></i>My Assigned Complaints
         </button>
@@ -2401,16 +2855,18 @@ async function renderResidentsPage() {
   AppState.cache.residents = residents;
 
   main.innerHTML = `
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div class="sc-page-header">
       <div>
         <h3 class="fw-bold mb-1" style="color: var(--sc-navy);">Resident Management</h3>
         <div class="text-secondary small">
-          Directory of registered flat owners and tenants across Blocks A, B, C, and D
+          Directory of registered flat owners, tenants, and family members across Blocks A, B, C, and D
         </div>
       </div>
-      <button class="btn btn-sc-primary" onclick="openResidentModal()">
-        <i class="bi bi-person-plus-fill me-1"></i>Add Resident
-      </button>
+      <div class="sc-page-actions">
+        <button class="btn btn-sc-primary btn-sm" onclick="openResidentModal()">
+          <i class="bi bi-person-plus-fill me-1"></i>Add Resident
+        </button>
+      </div>
     </div>
 
     <div class="sc-card">
@@ -2601,7 +3057,7 @@ window.openResidentModal = function (editId = null) {
   const today = new Date().toISOString().slice(0, 10);
 
   openModal(
-    existing ? `Edit Resident — ${existing.residentCode}` : 'Register New Resident & Flat',
+    existing ? `Edit Resident — ${existing.residentCode}` : 'Register New Resident & Flat Account',
     `
     <form id="residentForm">
       <div class="row g-3">
@@ -2609,7 +3065,7 @@ window.openResidentModal = function (editId = null) {
           <label class="form-label small fw-semibold">Full Name *</label>
           <input type="text" class="form-control" id="resFullName" value="${escapeHtml(existing?.fullName || '')}" placeholder="e.g. Arvind Swamy" required />
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-md-3">
           <label class="form-label small fw-semibold">Block *</label>
           <select class="form-select" id="resBlock" required>
             ${['A', 'B', 'C', 'D']
@@ -2617,7 +3073,7 @@ window.openResidentModal = function (editId = null) {
               .join('')}
           </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-md-3">
           <label class="form-label small fw-semibold">Flat Number *</label>
           <input type="text" class="form-control tabular-nums" id="resFlatNumber" value="${escapeHtml(existing?.flatNumber || '')}" placeholder="e.g. A-201" required />
         </div>
@@ -2626,27 +3082,38 @@ window.openResidentModal = function (editId = null) {
           <input type="text" class="form-control tabular-nums" id="resPhone" value="${escapeHtml(existing?.phone || '')}" placeholder="e.g. 9848012345" required />
         </div>
         <div class="col-md-6">
-          <label class="form-label small fw-semibold">Email Address *</label>
+          <label class="form-label small fw-semibold">Email Address (Login ID) *</label>
           <input type="email" class="form-control" id="resEmail" value="${escapeHtml(existing?.email || '')}" placeholder="resident@example.com" required />
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-md-4">
           <label class="form-label small fw-semibold">Owner or Tenant *</label>
           <select class="form-select" id="resType">
             <option value="Owner" ${existing?.residentType === 'Owner' ? 'selected' : ''}>Owner</option>
             <option value="Tenant" ${existing?.residentType === 'Tenant' ? 'selected' : ''}>Tenant</option>
           </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-md-4">
+          <label class="form-label small fw-semibold">Household Role</label>
+          <select class="form-select" id="resMemberRole">
+            <option value="Primary Resident" ${existing?.memberRole === 'Primary Resident' ? 'selected' : ''}>Primary Resident</option>
+            <option value="Family Member" ${existing?.memberRole === 'Family Member' ? 'selected' : ''}>Family Member</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-4">
           <label class="form-label small fw-semibold">Family Members *</label>
           <input type="number" min="1" max="20" class="form-control tabular-nums" id="resFamily" value="${existing?.familyMembers || 3}" required />
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-md-4">
           <label class="form-label small fw-semibold">Registration Date *</label>
           <input type="date" class="form-control tabular-nums" id="resRegDate" value="${existing?.registrationDate || today}" required />
         </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label small fw-semibold">${existing ? 'Reset Account Password (Optional)' : 'Initial Account Password'}</label>
+          <input type="password" class="form-control" id="resPassword" placeholder="${existing ? 'Leave blank to keep current' : 'Default: Resident@123'}" />
+        </div>
         ${
           existing
-            ? `<div class="col-md-4">
+            ? `<div class="col-12 col-md-4">
                  <label class="form-label small fw-semibold">Account Status</label>
                  <select class="form-select" id="resStatus">
                    <option value="Active" ${existing.status === 'Active' ? 'selected' : ''}>Active</option>
@@ -2675,24 +3142,30 @@ window.openResidentModal = function (editId = null) {
       phone: document.getElementById('resPhone').value.trim(),
       email: document.getElementById('resEmail').value.trim(),
       residentType: document.getElementById('resType').value,
+      memberRole: document.getElementById('resMemberRole').value,
       familyMembers: Number(document.getElementById('resFamily').value) || 1,
       registrationDate: document.getElementById('resRegDate').value,
+      password: document.getElementById('resPassword').value,
       status: document.getElementById('resStatus')?.value || 'Active'
     };
 
     try {
+      let res;
       if (existing) {
-        await apiRequest(`/api/residents/${existing.id}`, {
+        res = await apiRequest(`/api/residents/${existing.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload)
         });
         showToast(`Updated resident record for ${payload.fullName}.`, 'success');
       } else {
-        await apiRequest('/api/residents', {
+        res = await apiRequest('/api/residents', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
-        showToast(`Resident ${payload.fullName} (${payload.flatNumber}) added.`, 'success');
+        showToast(`Resident ${payload.fullName} (Flat ${payload.flatNumber}) registered.`, 'success');
+      }
+      if (res?.vaultToken) {
+        localStorage.setItem('sc_account_vault', res.vaultToken);
       }
       closeModal();
       loadActivePageContent();
@@ -3786,7 +4259,7 @@ window.openWorkerModal = function (editId = null) {
   ];
 
   openModal(
-    existing ? `Edit Worker — ${existing.workerCode}` : 'Register Maintenance Worker',
+    existing ? `Edit Worker — ${existing.workerCode}` : 'Register Maintenance Worker & Login Account',
     `
     <form id="workerForm">
       <div class="row g-3">
@@ -3814,6 +4287,14 @@ window.openWorkerModal = function (editId = null) {
             <option value="Off Duty" ${existing?.availability === 'Off Duty' ? 'selected' : ''}>Off Duty</option>
           </select>
         </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Worker Login Email (Optional)</label>
+          <input type="email" class="form-control" id="wrkEmail" placeholder="worker@community.com" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">${existing ? 'Reset Worker Password (Optional)' : 'Initial Login Password'}</label>
+          <input type="password" class="form-control" id="wrkPassword" placeholder="${existing ? 'Leave blank to keep current' : 'Default: Worker@123'}" />
+        </div>
       </div>
       <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
         <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
@@ -3830,21 +4311,27 @@ window.openWorkerModal = function (editId = null) {
       name: document.getElementById('wrkName').value.trim(),
       specialization: document.getElementById('wrkSpec').value,
       phone: document.getElementById('wrkPhone').value.trim(),
-      availability: document.getElementById('wrkAvail').value
+      availability: document.getElementById('wrkAvail').value,
+      email: document.getElementById('wrkEmail')?.value.trim(),
+      password: document.getElementById('wrkPassword')?.value
     };
     try {
+      let res;
       if (existing) {
-        await apiRequest(`/api/workers/${existing.id}`, {
+        res = await apiRequest(`/api/workers/${existing.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload)
         });
         showToast(`Worker ${payload.name} updated.`, 'success');
       } else {
-        await apiRequest('/api/workers', {
+        res = await apiRequest('/api/workers', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
         showToast(`Worker ${payload.name} added.`, 'success');
+      }
+      if (res?.vaultToken) {
+        localStorage.setItem('sc_account_vault', res.vaultToken);
       }
       closeModal();
       loadActivePageContent();
@@ -5377,7 +5864,13 @@ async function renderSettingsOrProfilePage() {
         })
       });
       AppState.user = res.user;
-      localStorage.setItem('sc_auth_user', JSON.stringify(res.user));
+      sessionStorage.setItem('sc_auth_user', JSON.stringify(res.user));
+      if (localStorage.getItem('sc_auth_token')) {
+        localStorage.setItem('sc_auth_user', JSON.stringify(res.user));
+      }
+      if (res.vaultToken) {
+        localStorage.setItem('sc_account_vault', res.vaultToken);
+      }
       showToast(res.message, 'success');
       renderAppShell();
     } catch (err) {
@@ -5388,13 +5881,16 @@ async function renderSettingsOrProfilePage() {
   document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
-      await apiRequest('/api/settings/password', {
+      const res = await apiRequest('/api/settings/password', {
         method: 'PUT',
         body: JSON.stringify({
           currentPassword: document.getElementById('curPwd').value,
           newPassword: document.getElementById('newPwd').value
         })
       });
+      if (res?.vaultToken) {
+        localStorage.setItem('sc_account_vault', res.vaultToken);
+      }
       showToast('Password updated successfully.', 'success');
       document.getElementById('changePasswordForm').reset();
     } catch (err) {
