@@ -1,0 +1,517 @@
+/* ============================================================================
+   SMART COMMUNITY MANAGEMENT SYSTEM - CUSTOM DESIGN SYSTEM (Bootstrap 5.3)
+   Palette:
+   - Primary Navy:       #142D4E
+   - Secondary Royal:    #2563EB
+   - Page Background:    #F4F7FB
+   - Surface / Cards:    #FFFFFF
+   - Main Text:          #0F172A
+   - Muted Text:         #64748B
+   ============================================================================ */
+
+:root {
+  --sc-navy: #142D4E;
+  --sc-navy-dark: #0E213A;
+  --sc-navy-light: #1E3F6B;
+  --sc-royal: #2563EB;
+  --sc-royal-hover: #1D4ED8;
+  --sc-bg: #F4F7FB;
+  --sc-card: #FFFFFF;
+  --sc-border: #E2E8F0;
+  --sc-text: #0F172A;
+  --sc-muted: #64748B;
+  --sc-success: #15803D;
+  --sc-success-bg: #DCFCE7;
+  --sc-warning: #B45309;
+  --sc-warning-bg: #FEF3C7;
+  --sc-danger: #B91C1C;
+  --sc-danger-bg: #FEE2E2;
+  --sc-info: #1D4ED8;
+  --sc-info-bg: #DBEAFE;
+  --sidebar-width: 264px;
+}
+
+body {
+  font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--sc-bg);
+  color: var(--sc-text);
+  font-size: 0.925rem;
+  line-height: 1.55;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6,
+.brand-font,
+.nav-link,
+.modal-title {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+.tabular-nums,
+.font-mono-num,
+table td.num-col,
+.stat-value,
+.code-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   SPLIT-SCREEN LOGIN VIEW
+   ============================================================================ */
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  background-color: var(--sc-bg);
+}
+
+.login-hero-pane {
+  position: relative;
+  flex: 1.15;
+  min-height: 100vh;
+  background-color: var(--sc-navy);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 3rem;
+  color: #FFFFFF;
+}
+
+.login-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.login-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    165deg,
+    rgba(20, 45, 78, 0.88) 0%,
+    rgba(14, 33, 58, 0.82) 50%,
+    rgba(15, 23, 42, 0.94) 100%
+  );
+  z-index: 1;
+}
+
+.login-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 540px;
+}
+
+.login-form-pane {
+  flex: 0.85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem;
+  background-color: var(--sc-bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--sc-card);
+  border: 1px solid var(--sc-border);
+  border-radius: 14px;
+  padding: 2.25rem;
+  box-shadow: 0 10px 30px rgba(20, 45, 78, 0.06);
+}
+
+.demo-role-btn {
+  border: 1px solid var(--sc-border);
+  background: #F8FAFC;
+  color: var(--sc-text);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.demo-role-btn:hover,
+.demo-role-btn.active {
+  border-color: var(--sc-royal);
+  background: #EFF6FF;
+  color: var(--sc-royal);
+}
+
+/* ============================================================================
+   APP SHELL: SIDEBAR & TOPBAR
+   ============================================================================ */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sc-sidebar {
+  width: var(--sidebar-width);
+  background-color: var(--sc-navy);
+  color: #FFFFFF;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1030;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sc-sidebar-brand {
+  padding: 1.25rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sc-brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background-color: var(--sc-royal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.sc-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 0.75rem;
+}
+
+.sc-nav-section-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(255, 255, 255, 0.48);
+  padding: 0.6rem 0.75rem 0.35rem;
+  font-weight: 600;
+}
+
+.sc-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.62rem 0.85rem;
+  margin-bottom: 0.2rem;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.sc-nav-item i {
+  font-size: 1.05rem;
+  width: 20px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.sc-nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+.sc-nav-item.active {
+  background-color: var(--sc-royal);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.sc-nav-item.active i {
+  opacity: 1;
+}
+
+.sc-sidebar-footer {
+  padding: 0.9rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: var(--sc-navy-dark);
+}
+
+/* Main Workspace */
+.sc-main {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100vh;
+}
+
+.sc-topbar {
+  height: 64px;
+  background-color: #FFFFFF;
+  border-bottom: 1px solid var(--sc-border);
+  padding: 0 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+
+.sc-content {
+  padding: 1.75rem;
+  flex: 1;
+}
+
+/* ============================================================================
+   CARDS, STAT BOXES & TABLES
+   ============================================================================ */
+.sc-card {
+  background-color: var(--sc-card);
+  border: 1px solid var(--sc-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+.sc-card-header {
+  padding: 1.1rem 1.35rem;
+  border-bottom: 1px solid var(--sc-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sc-card-body {
+  padding: 1.35rem;
+}
+
+.sc-stat-card {
+  background-color: #FFFFFF;
+  border: 1px solid var(--sc-border);
+  border-radius: 12px;
+  padding: 1.25rem 1.35rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sc-stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(20, 45, 78, 0.06);
+}
+
+.sc-stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--sc-navy);
+  line-height: 1.2;
+}
+
+/* Tables */
+.sc-table {
+  margin-bottom: 0;
+  vertical-align: middle;
+}
+
+.sc-table thead th {
+  background-color: #F8FAFC;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--sc-border);
+  white-space: nowrap;
+}
+
+.sc-table tbody td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #F1F5F9;
+  color: var(--sc-text);
+  font-size: 0.885rem;
+}
+
+.sc-table tbody tr:hover {
+  background-color: #F8FAFC;
+}
+
+/* Semantic Status Indicators (Accessible Text + Icon/Tone) */
+.sc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.22rem 0.6rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.sc-status-success {
+  background-color: var(--sc-success-bg);
+  color: var(--sc-success);
+}
+
+.sc-status-warning {
+  background-color: var(--sc-warning-bg);
+  color: var(--sc-warning);
+}
+
+.sc-status-danger {
+  background-color: var(--sc-danger-bg);
+  color: var(--sc-danger);
+}
+
+.sc-status-info {
+  background-color: var(--sc-info-bg);
+  color: var(--sc-info);
+}
+
+.sc-status-neutral {
+  background-color: #F1F5F9;
+  color: #475569;
+}
+
+/* Buttons */
+.btn-sc-primary {
+  background-color: var(--sc-royal);
+  border-color: var(--sc-royal);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+}
+
+.btn-sc-primary:hover {
+  background-color: var(--sc-royal-hover);
+  border-color: var(--sc-royal-hover);
+  color: #FFFFFF;
+}
+
+.btn-sc-navy {
+  background-color: var(--sc-navy);
+  border-color: var(--sc-navy);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+}
+
+.btn-sc-navy:hover {
+  background-color: var(--sc-navy-light);
+  border-color: var(--sc-navy-light);
+  color: #FFFFFF;
+}
+
+/* Priority Queue Rank Number */
+.pq-rank {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pq-rank-1 {
+  background-color: #FEE2E2;
+  color: #B91C1C;
+}
+
+.pq-rank-2 {
+  background-color: #FEF3C7;
+  color: #B45309;
+}
+
+.pq-rank-default {
+  background-color: #E2E8F0;
+  color: #1E293B;
+}
+
+/* Empty State */
+.sc-empty-state {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--sc-muted);
+}
+
+.sc-empty-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background-color: #F1F5F9;
+  color: var(--sc-navy);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 0.85rem;
+}
+
+/* Code Block Viewer for Java/SQL Source */
+.java-code-viewer {
+  background-color: #0F172A;
+  color: #E2E8F0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  padding: 1.25rem;
+  border-radius: 8px;
+  max-height: 560px;
+  overflow: auto;
+  white-space: pre;
+  margin: 0;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 991.98px) {
+  .login-hero-pane {
+    display: none;
+  }
+  .sc-sidebar {
+    transform: translateX(-100%);
+  }
+  .sc-sidebar.show-mobile {
+    transform: translateX(0);
+  }
+  .sc-main {
+    margin-left: 0;
+  }
+}

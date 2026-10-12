@@ -1,0 +1,6 @@
+{
+  "name": "Smart Community Management System",
+  "description": "A comprehensive residential apartment and community management platform with resident directory, smart PriorityQueue complaint ranking, worker assignment, visitor log, maintenance billing, facility booking, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
