@@ -1254,10 +1254,18 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     return;
   }
 
+  const aliasMap: Record<string, string> = {
+    'admin@community.com': 'admin@smartcommunity.com',
+    'resident@community.com': 'resident@smartcommunity.com',
+    'worker@community.com': 'worker@smartcommunity.com'
+  };
+  const resolvedId = aliasMap[cleanId] || cleanId;
+
   const user = db.users.find(
     (u) =>
       u.active &&
-      (String(u.email).toLowerCase() === cleanId || String(u.username).toLowerCase() === cleanId)
+      (String(u.email).toLowerCase() === resolvedId ||
+        String(u.username).toLowerCase() === resolvedId)
   );
 
   if (!user || !verifyPassword(String(password), user.passwordHash)) {
