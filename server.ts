@@ -338,7 +338,7 @@ function createInitialSeedDatabase(withDemoData: boolean): DatabaseSchema {
       id: 1,
       username: 'admin',
       email: 'admin@smartcommunity.com',
-      passwordHash: hashPassword('Admin@123'),
+      passwordHash: process.env.DEMO_ADMIN_PASSWORD ? hashPassword(process.env.DEMO_ADMIN_PASSWORD) : '',
       fullName: 'Rajeshwar Rao',
       role: 'ADMIN',
       linkedResidentId: null,
@@ -350,7 +350,7 @@ function createInitialSeedDatabase(withDemoData: boolean): DatabaseSchema {
       id: 2,
       username: 'arjun.mehta',
       email: 'resident@smartcommunity.com',
-      passwordHash: hashPassword('Resident@123'),
+      passwordHash: process.env.DEMO_RESIDENT_PASSWORD ? hashPassword(process.env.DEMO_RESIDENT_PASSWORD) : '',
       fullName: 'Arjun Mehta',
       role: 'RESIDENT',
       linkedResidentId: 1,
@@ -362,7 +362,7 @@ function createInitialSeedDatabase(withDemoData: boolean): DatabaseSchema {
       id: 3,
       username: 'ramesh.yadav',
       email: 'worker@smartcommunity.com',
-      passwordHash: hashPassword('Worker@123'),
+      passwordHash: process.env.DEMO_WORKER_PASSWORD ? hashPassword(process.env.DEMO_WORKER_PASSWORD) : '',
       fullName: 'Ramesh Yadav',
       role: 'WORKER',
       linkedResidentId: null,
@@ -937,22 +937,35 @@ async function startServer() {
   // 1. AUTHENTICATION ENDPOINTS
   // --------------------------------------------------------------------------
   app.post('/api/auth/login', (req: Request, res: Response) => {
-    const { identifier, password } = req.body;
-    if (!identifier || !password) {
-      res.status(400).json({ error: 'Email/Username and password are required.' });
+    const { identifier, demoRole, password } = req.body;
+    const cleanId = String(identifier || '').trim().toLowerCase();
+    const roleParam = String(demoRole || '').trim().toUpperCase();
+
+    if (!cleanId && !roleParam) {
+      res.status(400).json({ error: 'Please select a demo role account or enter an account identifier.' });
       return;
     }
 
-    const cleanId = String(identifier).trim().toLowerCase();
-    const user = db.users.find(
+    let user = db.users.find(
       (u) =>
         u.active &&
         (String(u.email).toLowerCase() === cleanId || String(u.username).toLowerCase() === cleanId)
     );
 
-    if (!user || !verifyPassword(String(password), user.passwordHash)) {
+    if (!user && ['ADMIN', 'RESIDENT', 'WORKER'].includes(roleParam)) {
+      user = db.users.find((u) => u.active && u.role === roleParam);
+    }
+
+    if (!user) {
       res.status(401).json({
-        error: 'Invalid credentials. Please check your email/username and password.'
+        error: 'Demo account not found. Please select Administrator, Resident, or Maintenance Worker.'
+      });
+      return;
+    }
+
+    if (password && user.passwordHash && !verifyPassword(String(password), user.passwordHash)) {
+      res.status(401).json({
+        error: 'Invalid credentials.'
       });
       return;
     }

@@ -104,7 +104,32 @@ function closeModal() {
   }
 }
 
+function getConfiguredBackendBaseUrl() {
+  const winUrl =
+    typeof window !== 'undefined' && window.SMART_COMMUNITY_API_BASE_URL
+      ? String(window.SMART_COMMUNITY_API_BASE_URL).trim()
+      : '';
+  const storedUrl = localStorage.getItem('sc_api_base_url') || '';
+  return (winUrl || storedUrl).replace(/\/+$/, '');
+}
+
 async function apiRequest(endpoint, options = {}) {
+  const configuredBaseUrl = getConfiguredBackendBaseUrl();
+
+  // Do not assume a backend server exists on Vercel static deployments.
+  // Unless an external deployed backend URL is explicitly configured, execute
+  // against the built-in client-side Demonstration Engine.
+  if (!configuredBaseUrl && window.SmartCommunityDemoEngine) {
+    try {
+      return await window.SmartCommunityDemoEngine.handleRequest(endpoint, options, AppState.user);
+    } catch (err) {
+      if (err && err.status === 401 && !endpoint.includes('/api/auth/login')) {
+        handleLogout(false);
+      }
+      throw err;
+    }
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {})
@@ -113,14 +138,15 @@ async function apiRequest(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${AppState.token}`;
   }
 
+  const requestUrl = configuredBaseUrl ? `${configuredBaseUrl}${endpoint}` : endpoint;
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetch(requestUrl, {
       ...options,
       headers
     });
   } catch {
-    throw new Error('Unable to reach the community server. Please check your connection.');
+    throw new Error('Unable to reach the configured backend server. Please verify the backend URL.');
   }
 
   if (response.status === 401 && !endpoint.includes('/api/auth/login')) {
@@ -253,14 +279,22 @@ function renderLoginScreen(errorMsg = '') {
       <!-- Right Side: White Login Card -->
       <div class="login-form-pane">
         <div class="login-card">
-          <div class="d-flex align-items-center gap-3 mb-3">
-            <div class="sc-brand-icon">
-              <i class="bi bi-shield-lock-fill"></i>
+          <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="sc-brand-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+              </div>
+              <div>
+                <h4 class="fw-bold mb-0" style="color: var(--sc-navy);">Demo Role Sign-In</h4>
+                <div class="text-muted small">Smart Community Management System</div>
+              </div>
             </div>
-            <div>
-              <h4 class="fw-bold mb-0" style="color: var(--sc-navy);">Sign In to Portal</h4>
-              <div class="text-muted small">Smart Community Management System</div>
-            </div>
+            <span class="sc-status sc-status-info">Demo Mode</span>
+          </div>
+
+          <div class="p-2 px-3 rounded border mb-3 small" style="background: #F8FAFC; color: var(--sc-text-muted);">
+            <i class="bi bi-info-circle-fill text-primary me-1"></i>
+            <strong>Interactive Demonstration Mode:</strong> Select one of the community demo role accounts below to access its role-specific dashboard and workflow.
           </div>
 
           ${
@@ -273,13 +307,54 @@ function renderLoginScreen(errorMsg = '') {
           }
 
           <form id="loginForm" novalidate>
+            <input type="hidden" id="selectedDemoRole" value="ADMIN" />
+
+            <!-- Role Selection for Project Demonstration -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold small text-secondary mb-2">
+                1. Choose Demo Role Account
+              </label>
+              <div class="row g-2">
+                <div class="col-4">
+                  <button
+                    type="button"
+                    class="demo-role-btn w-100 active"
+                    onclick="selectDemoRoleAccount('ADMIN', 'admin@smartcommunity.com', 'Rajeshwar Rao · Chief Administrator', this)"
+                  >
+                    <div class="text-dark fw-bold"><i class="bi bi-person-gear me-1"></i>Admin</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Community Admin</div>
+                  </button>
+                </div>
+                <div class="col-4">
+                  <button
+                    type="button"
+                    class="demo-role-btn w-100"
+                    onclick="selectDemoRoleAccount('RESIDENT', 'resident@smartcommunity.com', 'Arjun Mehta · Block A, Flat A-101', this)"
+                  >
+                    <div class="text-dark fw-bold"><i class="bi bi-house-heart me-1"></i>Resident</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Flat A-101</div>
+                  </button>
+                </div>
+                <div class="col-4">
+                  <button
+                    type="button"
+                    class="demo-role-btn w-100"
+                    onclick="selectDemoRoleAccount('WORKER', 'worker@smartcommunity.com', 'Ramesh Yadav · Plumber (WRK-201)', this)"
+                  >
+                    <div class="text-dark fw-bold"><i class="bi bi-tools me-1"></i>Worker</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Plumber</div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div class="mb-3">
               <label class="form-label fw-semibold small text-secondary" for="loginIdentifier">
-                Email or Username
+                2. Selected Demo Account Email / Username
               </label>
               <div class="input-group">
                 <span class="input-group-text bg-light border-end-0 text-secondary">
-                  <i class="bi bi-person"></i>
+                  <i class="bi bi-person-check"></i>
                 </span>
                 <input
                   type="text"
@@ -290,32 +365,8 @@ function renderLoginScreen(errorMsg = '') {
                   required
                 />
               </div>
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label fw-semibold small text-secondary" for="loginPassword">
-                Password
-              </label>
-              <div class="input-group">
-                <span class="input-group-text bg-light border-end-0 text-secondary">
-                  <i class="bi bi-key"></i>
-                </span>
-                <input
-                  type="password"
-                  id="loginPassword"
-                  class="form-control border-start-0 border-end-0"
-                  placeholder="Enter password"
-                  value="Admin@123"
-                  required
-                />
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary border-start-0 bg-light"
-                  id="togglePasswordBtn"
-                  title="Show or hide password"
-                >
-                  <i class="bi bi-eye" id="togglePasswordIcon"></i>
-                </button>
+              <div class="form-text small" id="selectedDemoAccountDesc">
+                Active Demo Profile: <strong>Rajeshwar Rao · Chief Administrator</strong>
               </div>
             </div>
 
@@ -323,89 +374,46 @@ function renderLoginScreen(errorMsg = '') {
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="rememberMeCheck" checked />
                 <label class="form-check-label small text-secondary" for="rememberMeCheck">
-                  Remember me on this device
+                  Keep demo session active in this browser
                 </label>
               </div>
+              <button
+                type="button"
+                class="btn btn-link btn-sm p-0 text-decoration-none small"
+                onclick="resetBrowserDemoData()"
+                title="Reset browser demo records to default seed state"
+              >
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Demo Data
+              </button>
             </div>
 
-            <button type="submit" class="btn btn-sc-primary w-100 py-2 mb-3" id="loginSubmitBtn">
-              <i class="bi bi-box-arrow-in-right me-1"></i> Sign In
+            <button type="submit" class="btn btn-sc-primary w-100 py-2" id="loginSubmitBtn">
+              <i class="bi bi-box-arrow-in-right me-1"></i> Sign In to Demo Portal
             </button>
           </form>
-
-          <!-- Role Selection for Project Demonstration -->
-          <div class="border-top pt-3 mt-2">
-            <div class="small fw-semibold text-secondary mb-2">
-              Select Role Account (For Demonstration):
-            </div>
-            <div class="row g-2">
-              <div class="col-4">
-                <button
-                  type="button"
-                  class="demo-role-btn w-100 active"
-                  onclick="fillDemoCredentials('admin@smartcommunity.com', 'Admin@123', this)"
-                >
-                  <div class="text-dark fw-bold"><i class="bi bi-person-gear me-1"></i>Admin</div>
-                  <div class="text-muted" style="font-size: 0.7rem;">Community Admin</div>
-                </button>
-              </div>
-              <div class="col-4">
-                <button
-                  type="button"
-                  class="demo-role-btn w-100"
-                  onclick="fillDemoCredentials('resident@smartcommunity.com', 'Resident@123', this)"
-                >
-                  <div class="text-dark fw-bold"><i class="bi bi-house-heart me-1"></i>Resident</div>
-                  <div class="text-muted" style="font-size: 0.7rem;">Flat A-101</div>
-                </button>
-              </div>
-              <div class="col-4">
-                <button
-                  type="button"
-                  class="demo-role-btn w-100"
-                  onclick="fillDemoCredentials('worker@smartcommunity.com', 'Worker@123', this)"
-                >
-                  <div class="text-dark fw-bold"><i class="bi bi-tools me-1"></i>Worker</div>
-                  <div class="text-muted" style="font-size: 0.7rem;">Plumber</div>
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   `;
 
-  document.getElementById('togglePasswordBtn').addEventListener('click', () => {
-    const pwdInput = document.getElementById('loginPassword');
-    const icon = document.getElementById('togglePasswordIcon');
-    if (pwdInput.type === 'password') {
-      pwdInput.type = 'text';
-      icon.className = 'bi bi-eye-slash';
-    } else {
-      pwdInput.type = 'password';
-      icon.className = 'bi bi-eye';
-    }
-  });
-
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const identifier = document.getElementById('loginIdentifier').value.trim();
-    const password = document.getElementById('loginPassword').value;
+    const demoRole = document.getElementById('selectedDemoRole').value;
 
-    if (!identifier || !password) {
-      renderLoginScreen('Please enter both your email/username and password.');
+    if (!identifier) {
+      renderLoginScreen('Please select a demo role account or enter a demo account email.');
       return;
     }
 
     const submitBtn = document.getElementById('loginSubmitBtn');
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Signing in...`;
+    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Entering Demo Portal...`;
 
     try {
       const result = await apiRequest('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ identifier, password })
+        body: JSON.stringify({ identifier, demoRole })
       });
 
       AppState.token = result.token;
@@ -417,7 +425,7 @@ function renderLoginScreen(errorMsg = '') {
 
       // Redirect each user to their role-specific dashboard
       AppState.activePage = getDefaultPageForRole(result.user.role);
-      showToast(`Welcome, ${result.user.fullName}!`, 'success');
+      showToast(`Signed in as ${result.user.fullName} (${result.user.role})`, 'success');
       renderAppShell();
     } catch (err) {
       renderLoginScreen(err.message);
@@ -425,19 +433,31 @@ function renderLoginScreen(errorMsg = '') {
   });
 }
 
-window.fillDemoCredentials = function (email, password, btnEl) {
-  document.getElementById('loginIdentifier').value = email;
-  document.getElementById('loginPassword').value = password;
+window.selectDemoRoleAccount = function (role, email, description, btnEl) {
+  const roleInput = document.getElementById('selectedDemoRole');
+  const idInput = document.getElementById('loginIdentifier');
+  const descEl = document.getElementById('selectedDemoAccountDesc');
+  if (roleInput) roleInput.value = role;
+  if (idInput) idInput.value = email;
+  if (descEl) {
+    descEl.innerHTML = `Active Demo Profile: <strong>${escapeHtml(description)}</strong>`;
+  }
   document.querySelectorAll('.demo-role-btn').forEach((b) => b.classList.remove('active'));
   if (btnEl) btnEl.classList.add('active');
+};
+
+window.resetBrowserDemoData = function () {
+  if (window.SmartCommunityDemoEngine && typeof window.SmartCommunityDemoEngine.resetDemoDatabase === 'function') {
+    window.SmartCommunityDemoEngine.resetDemoDatabase();
+    showToast('Demonstration dataset restored to initial seed state.', 'info');
+  }
 };
 
 async function handleLogout(notify = true) {
   try {
     if (AppState.token) {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${AppState.token}` }
+      await apiRequest('/api/auth/logout', {
+        method: 'POST'
       });
     }
   } catch {
